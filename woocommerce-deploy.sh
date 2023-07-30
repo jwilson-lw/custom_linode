@@ -1,10 +1,8 @@
 #!/bin/bash
+
+# set up pipefail and error trapping > cleanup function then EXIT
 set -e
 trap "cleanup $? $LINENO" EXIT
-
-## Wordpress Settings
-#<UDF name="soa_email_address" label="Email address (for the Let's Encrypt SSL certificate)" example="user@domain.tld">
-#<UDF name="webserver_stack" label="The stack you are looking to deploy Wordpress on" oneOf="LAMP,LEMP">
 
 #<UDF name="site_title" label="Website title" example="My Blog">
 #<UDF name="wp_admin_user" label="Admin username" example="admin">
@@ -23,28 +21,34 @@ trap "cleanup $? $LINENO" EXIT
 #<UDF name="domain" label="Domain" example="The domain for the DNS record: example.com (Requires API token)" default="">
 
 # git repo
-export GIT_REPO="https://github.com/linode-solutions/marketplace-apps.git"
-export WORK_DIR="/tmp/marketplace-apps"
+export GIT_REPO="https://github.com/jwilson-lw/custom_linode.git"
+export WORK_DIR="/tmp/custom_linode"
 export MARKETPLACE_APP="apps/linode-marketplace-woocommerce"
 
 # enable logging
+# probably should use some other type of logging here but w/e
+# would perfer a filebeat registration instead to incorportate into
+# ELK stack monitoring
 exec > >(tee /dev/ttyS0 /var/log/stackscript.log) 2>&1
 
+# deletes the workdir if it exists else does nothing
+# triggers on error (trap statment from above)
 function cleanup {
   if [ -d "${WORK_DIR}" ]; then
     rm -rf ${WORK_DIR}
   fi
-
 }
 
+# this should still work if deployed as a stack script
+# if deploying on an existing box set some enviroment 
+# variables before executing
+# could be as simple as adding export statment before woocommerce-deploy.sh in term.
 function udf {
   local group_vars="${WORK_DIR}/${MARKETPLACE_APP}/group_vars/linode/vars"
-  local web_stack=$(echo ${WEBSERVER_STACK} | tr [:upper:] [:lower:])
+  local web_stack="lamp"
   sed 's/  //g' <<EOF > ${group_vars}
 
   # deployment vars
-  soa_email_address: ${SOA_EMAIL_ADDRESS}
-  webserver_stack: ${web_stack}
   site_title: ${SITE_TITLE}
   wp_admin_user: ${WP_ADMIN_USER}
   wp_db_user: ${WP_DB_USER}
@@ -90,12 +94,12 @@ function run {
 
   # clone repo and set up ansible environment
   git -C /tmp clone ${GIT_REPO}
-  # for a single testing branch
-  # git -C /tmp clone --single-branch --branch ${BRANCH} ${GIT_REPO}
 
-  # venv
+  # python virtual enviroment
+  # TODO: migrate to micromamba(much smaller C python env 
+  # manager based on mamba/conda)
   cd ${WORK_DIR}/${MARKETPLACE_APP}
-  pip3 install virtualenv
+  pip install virtualenv
   python3 -m virtualenv env
   source env/bin/activate
   pip install pip --upgrade
@@ -105,6 +109,9 @@ function run {
   # populate group_vars
   udf
   # run playbooks
+  # THIS DOES ALL THE ACTUALL WORK
+  # TODO: dockerize this work and migrate away from ansible as much as possible
+  # for me it's more obtuse than it has to be.
   for playbook in provision.yml site.yml; do ansible-playbook -vvvv $playbook; done
 }
 
@@ -118,10 +125,11 @@ function installation_complete {
 # The Mysql root password can be found at: #
 # - /root/.linode_credentials.txt          #
 #                                          #
-# * Hugs are worth more than handshakes *  #
+# * Make hugs not thugs *  #
 ############################################
 EOF
 }
-# main
+
+# if __name__ == "__main__"
 run && installation_complete
 cleanup

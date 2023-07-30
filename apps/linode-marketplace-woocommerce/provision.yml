@@ -37,6 +37,8 @@
           wp_admin_pass: {{ WP_ADMIN_PASS }}
 
     # we are only deploying into LAMP stack
+    # also noticed an issue that would cause whole installation previsioning to fail
+    # caused by this line returning 'none'
     # - name: selecting the stack we are deploying in
     #   lineinfile:
     #     path: site.yml
